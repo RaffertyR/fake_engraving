@@ -14,3 +14,5 @@ instructions:
 1) Copy the plugin fake_engraving.py into your Gimp plugin directory and the wave pattern files (waves0.png, etc.) into your Gimp patterns directory.
 2) Start Gimp and open an image of about 1000 pixels or more at 300dpi which has sufficient contrast.
 3) Apply the script in the Python-Fu menu.
+
+![sample](sample.png)
