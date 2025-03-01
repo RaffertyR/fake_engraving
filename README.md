@@ -15,6 +15,7 @@ instructions:
 2) Copy the wave pattern files (waves0.png, etc.) into your Gimp patterns directory.
 3) Start Gimp and open an image which has sufficient contrast. Upscale or downscale the image for more or less detailed engraving.
 4) Apply the FakeEngraving script in the Filters / Artistic menu.
+
 Tip: Add a layer filled with a colour above the engraved_layer and set layer mode to screen in order to colour the engraved layer.
 
 ![sample](sample.png)
