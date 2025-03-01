@@ -3,8 +3,8 @@
 # fake_engraving.py
 
 # ##########################################################
-# IMPORTANT: Load the patterns 'waves0.png' till 'waves5.png' in your pattern
-# directory first!
+# IMPORTANT: Load the patterns 'waves0.png' till 'waves5.png' in your Gimp pattern
+# directory!
 # ##########################################################
 #
 # This plugin fakes an engraving effect by creating several layers with layer masks
@@ -12,6 +12,9 @@
 # with wave patterns with various thicknesses and some of them will be rotated
 # for a more realistic effect. At the end the engraving layers are merged together
 # and a white layer is added to increase visibility.
+#
+# Tip: Add a layer filled with a colour above the engraved_layer and set layer mode
+#  to screen in order to colour the engraved layer.
 #
 # Inspired by this Photoshop tutorial: 
 # https://blog.spoongraphics.co.uk/tutorials/create-realistic-money-effect-photoshop
@@ -31,111 +34,137 @@
 # To view a copy of the GNU General Public License
 # visit: http://www.gnu.org/licenses/gpl.html
 #
-# # ------------
+# ------------
 #| Change Log |
 # ------------
-# Version 1.0 - 19/02/2021 - initial release
+# Version 1.0 - 19/02/2021 - initial release for Gimp 2.10
+# Version 2.0 - 01/03/2025 - adapted for Gimp 3.0
 # ##########################################################
 
-from gimpfu import *
+import sys
 
-def python_fake_engraving(image,layer,merge_visible_layers=True) :
+import gi
+gi.require_version('Gimp', '3.0')
+from gi.repository import Gimp
+gi.require_version('GimpUi', '3.0')
+from gi.repository import GimpUi
+from gi.repository import GLib
 
-	########## prepare the image ##########
-	pdb.gimp_image_undo_group_start(image)
-	pdb.gimp_context_push()
-	pdb.gimp_selection_none(image)
-	pdb.gimp_image_flatten(image)
-	layers = image.layers
-	layer=layers[0]
-	pdb.gimp_item_set_name(layer,"original_image")
-	for channel in image.channels:
-		image.remove_channel(channel)		# remove all custom channels
-		
-	########## create the mask channels based on thresholds ##########
-	thresPoints = [0.31,0.39,0.47,0.55,0.63,0.71]	# 0.31=80/255, etc.
-	Num=0
-	for thres in thresPoints:	# cycle through thresPoints list at each iteration
-		layer_copy = pdb.gimp_layer_new_from_drawable(layer,image)
-		pdb.gimp_image_insert_layer(image,layer_copy,None,0)
-		pdb.gimp_drawable_threshold(layer_copy,0,0,thres)
-		# copy Red channel as:
-		channelName = pdb.gimp_channel_new_from_component(image,CHANNEL_RED,str(Num))
-		pdb.gimp_image_insert_channel(image,channelName,None,0)
-		Num+=1
-		pdb.gimp_image_remove_layer(image,layer_copy)	# remove layer that was used to create the mask
-	
-	########## create layers filled with the patterns and apply the masks ##########
-	maxDim=max(image.width,image.height) #in order to entirely fill the 90 degrees rotated layers
-	rotatedDim=((maxDim**2+maxDim**2)**(0.5)) #in order to entirely fill the 45 degrees rotated layer (Pythagoras)
-	rotations = [-45,0,0,90,90,0] # rotate the layers with the patterns at these angles
-	Num=0	
-	for channel in image.channels:
-		pdb.gimp_selection_none(image)
-		if rotations[Num]==-45:
-			layer_add = pdb.gimp_layer_new(image,rotatedDim,rotatedDim,RGBA_IMAGE,str(Num),100,NORMAL_MODE)
-		else:
-			layer_add = pdb.gimp_layer_new(image,maxDim,maxDim,RGBA_IMAGE,str(Num),100,NORMAL_MODE)
-		pdb.gimp_image_insert_layer(image, layer_add, None,0)
-		
-		# fill with waves pattern
-		pdb.gimp_context_set_pattern("waves"+str(Num)+".png")
-		pdb.gimp_edit_fill(layer_add,PATTERN_FILL)
+class FakeEngraving (Gimp.PlugIn):
+    def do_query_procedures(self):
+        return [ "rr-FakeEngraving" ]
 
-		# rotate pattern with rotations[x] and transform degrees to radians
-		item=pdb.gimp_item_transform_rotate(layer_add,3.14159/180*rotations[Num],1,0,0)
-		if pdb.gimp_layer_is_floating_sel(item):
-			pdb.gimp_floating_sel_anchor(item)
-		# move the 45 degrees rotated layer to fully cover the original image
-		if rotations[Num]==-45:
-			pdb.gimp_layer_set_offsets(layer_add,int(-maxDim/2),int(-maxDim/2))
-		
-		# add mask to layer
-		pdb.gimp_image_select_item(image, CHANNEL_OP_REPLACE,channel)
-		mask = pdb.gimp_layer_create_mask(layer_add, ADD_MASK_SELECTION)
-		pdb.gimp_layer_add_mask(layer_add, mask)
-		pdb.gimp_image_remove_channel(image,channel)
-		Num+=1
+    def do_set_i18n (self, name):
+        return False
 
-	############# finalize #######################
-	# hide original layer
-	layers = image.layers
-	select_layer=layers[Num] #select 6th layer (the original_image-layer)
-	pdb.gimp_item_set_visible(select_layer,0)
-	
-	# merge engrave layers and crop them to original image size
-	if merge_visible_layers:
-		pdb.gimp_image_merge_visible_layers(image,CLIP_TO_IMAGE)
-		layers = image.layers
-		select_layer=layers[0]
-		pdb.gimp_item_set_name(select_layer,"engraved")	
-	
-	# add white layer for visibility
-	white_layer = pdb.gimp_layer_new(image,image.width,image.height,RGBA_IMAGE,"white_layer",100,NORMAL_MODE)
-	pdb.gimp_image_insert_layer(image,white_layer,None,-1)
-	pdb.gimp_image_lower_item_to_bottom(image,white_layer)
-	pdb.gimp_selection_all(image)
-	pdb.gimp_edit_fill(white_layer,WHITE_FILL)
-	
-	pdb.gimp_selection_none(image)
-	pdb.gimp_context_pop()
-	pdb.gimp_image_undo_group_end(image)
-	pdb.gimp_displays_flush()
+    def do_create_procedure(self, name):
+        procedure = Gimp.ImageProcedure.new(self, name,
+                                            Gimp.PDBProcType.PLUGIN,
+                                            self.run, None)
 
-# The plugin registration
-register(
-	"python_fu_fake_engraving",
-	"Create Fake Engraving",
-	"Create Fake Engraving",
-	"Rafferty",
-	"Rafferty",
-	"Feb.2021",
-	"<Image>/Python-Fu/Fake Engraving...",             					#Menu path
-	"RGB*, GRAY*", 
-	[
-		(PF_TOGGLE, "merge_visible_layers", "Merge visible layers:", True)
-	],
-	[],
-	python_fake_engraving)
+        procedure.set_image_types("*")
 
-main()
+        procedure.set_menu_label("FakeEngraving...")
+        procedure.add_menu_path('<Image>/Filters/Artistic/')
+
+        procedure.set_documentation("Fake engraving",
+                                    "Fake engraving Python 3 plug-in for GIMP 3.0",
+                                    name)
+        procedure.set_attribution("Rafferty", "Rafferty", "2025")
+
+        return procedure
+
+    def run(self, procedure, run_mode, image, drawables, config, run_data):
+
+        merge_visible_layers=True # TO DO: create dialog to choose this
+        ########## prepare the image ##########
+        Gimp.message("Starting fake engraving plugin...")
+        image.undo_group_start()
+        Gimp.context_push()
+        Gimp.Selection.none(image)
+        layers = image.get_layers()
+        image.flatten()
+        layer=layers[0]
+        Gimp.Item.set_name(layer,"original_image")
+        channels = image.get_channels()
+        for channel in channels:
+            image.remove_channel(channel) # remove all custom channels
+
+        ########## create the mask channels based on thresholds ##########
+        thresPoints = [0.31,0.39,0.47,0.55,0.63,0.71] # 0.31=80/255, etc.
+        Num=0
+        for thres in thresPoints: # cycle through thresPoints list at each iteration
+            layer_copy = Gimp.Layer.new_from_drawable(layer,image)
+            image.insert_layer(layer_copy,None,0)
+            layer_copy.threshold(1, 0, thres) # RED=1
+            # copy Red channel as:
+            channelName = Gimp.Channel.new_from_component(image,Gimp.ChannelType.RED,str(Num))
+            image.insert_channel(channelName,None,0)
+            Num+=1
+            image.remove_layer(layer_copy) # remove layer that was used to create the mask
+
+        ########## create layers filled with the patterns and apply the masks ##########
+        maxDim=max(image.get_width(),image.get_height()) #in order to entirely fill the 90 degrees rotated layers
+        rotatedDim=((maxDim**2+maxDim**2)**(0.5)) #in order to entirely fill the 45 degrees rotated layer (Pythagoras)
+        rotations = [-45,0,0,90,90,0] # rotate the layers with the patterns at these angles
+        Num=0
+        channels = image.get_channels()
+        for channel in channels:
+            Gimp.Selection.none(image)
+            if rotations[Num]==-45:
+                layer_add = Gimp.Layer.new(image,str(Num),rotatedDim,rotatedDim,Gimp.ImageType.RGBA_IMAGE,100,Gimp.LayerMode.NORMAL)
+            else:
+                layer_add = Gimp.Layer.new(image,str(Num),maxDim,maxDim,Gimp.ImageType.RGBA_IMAGE,100,Gimp.LayerMode.NORMAL)
+            Gimp.Image.insert_layer(image, layer_add, None,0)
+
+            # fill with waves pattern
+            pat=Gimp.Pattern.get_by_name("waves"+str(Num)+".png")
+            Gimp.context_set_pattern(pat)
+            layer_add.edit_fill(Gimp.FillType.PATTERN)
+
+            # rotate pattern with rotations[x] and transform degrees to radians
+            item=layer_add.transform_rotate(3.14159/180*rotations[Num],1,0,0)
+            if item.is_floating_sel():
+                Gimp.floating_sel_anchor(item)
+            # move the 45 degrees rotated layer to fully cover the original image
+            if rotations[Num]==-45:
+                layer_add.set_offsets(int(-maxDim/2),int(-maxDim/2))
+
+            # add mask to layer
+            image.select_item(Gimp.ChannelOps.REPLACE,channel)
+            mask = layer_add.create_mask(Gimp.AddMaskType.SELECTION)
+            layer_add.add_mask(mask)
+            Gimp.Image.remove_channel(image,channel)
+            Num+=1
+
+        ############# finalize #######################
+        # hide original layer
+        layers = image.get_layers()
+        select_layer=layers[Num] #select 6th layer (the original_image-layer)
+        select_layer.set_visible(0)
+
+        # merge engrave layers and crop them to original image size
+        if merge_visible_layers:
+            image.merge_visible_layers(Gimp.MergeType.CLIP_TO_IMAGE)
+            layers = image.get_layers()
+            select_layer=layers[0]
+            select_layer.set_name("engraved_layer")
+
+        # add white layer for visibility
+        white_layer = Gimp.Layer.new(image,"white_layer",image.get_width(),image.get_height(),Gimp.ImageType.RGBA_IMAGE,100,Gimp.LayerMode.NORMAL)
+        image.insert_layer(white_layer,None,-1)
+        image.lower_item_to_bottom(white_layer)
+        Gimp.Selection.all(image)
+        white_layer.edit_fill(Gimp.FillType.WHITE)
+
+        ########## end of code ##########
+        Gimp.Selection.none(image)
+        Gimp.context_pop()
+        Gimp.displays_flush()
+        image.undo_group_end()
+        Gimp.message("Finishing fake engraving plugin!")
+
+        # in case of success, return:
+        return procedure.new_return_values(Gimp.PDBStatusType.SUCCESS, GLib.Error())
+
+Gimp.main(FakeEngraving.__gtype__, sys.argv)
